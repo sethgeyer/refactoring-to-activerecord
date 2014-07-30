@@ -1,6 +1,8 @@
 require "sinatra"
 require "gschool_database_connection"
 require "rack-flash"
+require_relative "lib/user"
+require_relative "lib/fish"
 
 class App < Sinatra::Application
   enable :sessions
@@ -15,8 +17,8 @@ class App < Sinatra::Application
     user = current_user
 
     if current_user
-      users = @database_connection.sql("SELECT * FROM users WHERE id != #{user["id"]}")
-      fish = @database_connection.sql("SELECT * FROM fish WHERE user_id = #{current_user["id"]}")
+      users = User.where('id != ?', session[:user_id])
+      fish = Fish.where(user_id: current_user.id)
       erb :signed_in, locals: {current_user: user, users: users, fish_list: fish}
     else
       erb :signed_out
@@ -28,18 +30,19 @@ class App < Sinatra::Application
   end
 
   post "/registrations" do
-    if validate_registration_params
-      insert_sql = <<-SQL
-      INSERT INTO users (username, password)
-      VALUES ('#{params[:username]}', '#{params[:password]}')
-      SQL
+    user = User.new
+    user.username = params[:username]
+    user.password = params[:password]
 
-      @database_connection.sql(insert_sql)
-
+    if user.save
       flash[:notice] = "Thanks for registering"
       redirect "/"
     else
-      erb :register
+      flash[:notice] =  ""
+      user.errors.full_messages.each do |message|
+        flash[:notice] += message
+      end
+      erb :register#, locals: {registration_errors: messages}
     end
   end
 
@@ -101,31 +104,39 @@ class App < Sinatra::Application
 
   private
 
-  def validate_registration_params
-    if params[:username] != "" && params[:password].length > 3 && username_available?(params[:username])
-      return true
-    end
 
-    error_messages = []
 
-    if params[:username] == ""
-      error_messages.push("Username is required")
-    end
 
-    if !username_available?(params[:username])
-      error_messages.push("Username has already been taken")
-    end
 
-    if params[:password] == ""
-      error_messages.push("Password is required")
-    elsif params[:password].length < 4
-      error_messages.push("Password must be at least 4 characters")
-    end
+  # def validate_registration_params
+  #   if params[:username] != "" && params[:password].length > 3 && username_available?(params[:username])
+  #     return true
+  #   end
+  #
+  #   error_messages = []
+  #
+  #   if params[:username] == ""
+  #     error_messages.push("Username is required")
+  #   end
+  #
+  #   if !username_available?(params[:username])
+  #     error_messages.push("Username has already been taken")
+  #   end
+  #
+  #   if params[:password] == ""
+  #     error_messages.push("Password is required")
+  #   elsif params[:password].length < 4
+  #     error_messages.push("Password must be at least 4 characters")
+  #   end
+  #
+  #   flash[:notice] = error_messages.join(", ")
+  #
+  #   false
+  # end
 
-    flash[:notice] = error_messages.join(", ")
 
-    false
-  end
+
+
 
   def validate_fish_params
     if params[:name] != "" && params[:wikipedia_page] != ""
@@ -168,8 +179,7 @@ class App < Sinatra::Application
   end
 
   def username_available?(username)
-    existing_users = @database_connection.sql("SELECT * FROM users where username = '#{username}'")
-
+    existing_users = User.where(username: username)
     existing_users.length == 0
   end
 
@@ -184,12 +194,7 @@ class App < Sinatra::Application
 
   def current_user
     if session[:user_id]
-      select_sql = <<-SQL
-      SELECT * FROM users
-      WHERE id = #{session[:user_id]}
-      SQL
-
-      @database_connection.sql(select_sql).first
+      User.find(session[:user_id])
     else
       nil
     end
