@@ -21,7 +21,7 @@ class App < Sinatra::Application
       fish = Fish.where(user_id: current_user.id)
       erb :signed_in, locals: {current_user: user, users: users, fish_list: fish}
     else
-      erb :signed_out
+      erb :signed_out, locals: {user: nil}
     end
   end
 
@@ -42,23 +42,10 @@ class App < Sinatra::Application
       user.errors.full_messages.each do |message|
         flash[:notice] += message
       end
-      erb :register#, locals: {registration_errors: messages}
+      erb :register
     end
   end
 
-  post "/sessions" do
-    if validate_authentication_params
-      user = authenticate_user
-
-      if user != nil
-        session[:user_id] = user["id"]
-      else
-        flash[:notice] = "Username/password is invalid"
-      end
-    end
-
-    redirect "/"
-  end
 
   delete "/sessions" do
     session[:user_id] = nil
@@ -66,77 +53,35 @@ class App < Sinatra::Application
   end
 
   delete "/users/:id" do
-    delete_sql = <<-SQL
-    DELETE FROM users
-    WHERE id = #{params[:id]}
-    SQL
-
-    @database_connection.sql(delete_sql)
-
+    User.find(params[:id].to_i).destroy
     redirect "/"
   end
 
   get "/fish/new" do
-    erb :"fish/new"
+
+    erb :"fish/new", locals: {fish: Fish.new}
   end
 
   get "/fish/:id" do
-    fish = @database_connection.sql("SELECT * FROM fish WHERE id = #{params[:id]}").first
+    fish = Fish.find(params[:id].to_i)
     erb :"fish/show", locals: {fish: fish}
   end
 
   post "/fish" do
-    if validate_fish_params
-      insert_sql = <<-SQL
-      INSERT INTO fish (name, wikipedia_page, user_id)
-      VALUES ('#{params[:name]}', '#{params[:wikipedia_page]}', #{current_user["id"]})
-      SQL
-
-      @database_connection.sql(insert_sql)
-
-      flash[:notice] = "Fish Created"
-
-      redirect "/"
-    else
-      erb :"fish/new"
-    end
+    # if validate_fish_params
+      fish = Fish.new
+      fish.name = params[:name]
+      fish.wikipedia_page = params[:wikipedia_page]
+      fish.user_id = current_user.id
+      if fish.save
+        flash[:notice] = "Fish Created"
+        redirect "/"
+      else
+        erb :"fish/new", locals: {fish: fish}
+      end
   end
 
   private
-
-
-
-
-
-  # def validate_registration_params
-  #   if params[:username] != "" && params[:password].length > 3 && username_available?(params[:username])
-  #     return true
-  #   end
-  #
-  #   error_messages = []
-  #
-  #   if params[:username] == ""
-  #     error_messages.push("Username is required")
-  #   end
-  #
-  #   if !username_available?(params[:username])
-  #     error_messages.push("Username has already been taken")
-  #   end
-  #
-  #   if params[:password] == ""
-  #     error_messages.push("Password is required")
-  #   elsif params[:password].length < 4
-  #     error_messages.push("Password must be at least 4 characters")
-  #   end
-  #
-  #   flash[:notice] = error_messages.join(", ")
-  #
-  #   false
-  # end
-
-
-
-
 
   def validate_fish_params
     if params[:name] != "" && params[:wikipedia_page] != ""
@@ -158,6 +103,38 @@ class App < Sinatra::Application
     false
   end
 
+  post "/sessions" do
+    if validate_authentication_params
+      user = User.find_by(username: params[:username], password: params[:password])
+      if user != nil
+        session[:user_id] = user["id"]
+      else
+        flash[:notice] = "Username/password is invalid"
+      end
+    end
+    redirect "/"
+
+    # user = User.new
+    # user.username = params[:username]
+    # user.password = params[:password]
+    # if user.valid?
+    #
+    #   user = User.find_by(username: params[:username], password: params[:password])
+    #   if user != nil
+    #     session[:user_id] = user.id
+    #     redirect "/"
+    #   else
+    #     flash[:notice] = "Username/password is invalid"
+    #     redirect "/"
+    #   end
+    # else
+    #   erb :signed_out, locals: {user: user}
+    # end
+
+  end
+
+
+
   def validate_authentication_params
     if params[:username] != "" && params[:password] != ""
       return true
@@ -178,19 +155,13 @@ class App < Sinatra::Application
     false
   end
 
+
   def username_available?(username)
     existing_users = User.where(username: username)
     existing_users.length == 0
   end
 
-  def authenticate_user
-    select_sql = <<-SQL
-    SELECT * FROM users
-    WHERE username = '#{params[:username]}' AND password = '#{params[:password]}'
-    SQL
 
-    @database_connection.sql(select_sql).first
-  end
 
   def current_user
     if session[:user_id]
