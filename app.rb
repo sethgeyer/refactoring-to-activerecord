@@ -46,7 +46,6 @@ class App < Sinatra::Application
     end
   end
 
-
   delete "/sessions" do
     session[:user_id] = nil
     redirect "/"
@@ -113,26 +112,7 @@ class App < Sinatra::Application
       end
     end
     redirect "/"
-
-    # user = User.new
-    # user.username = params[:username]
-    # user.password = params[:password]
-    # if user.valid?
-    #
-    #   user = User.find_by(username: params[:username], password: params[:password])
-    #   if user != nil
-    #     session[:user_id] = user.id
-    #     redirect "/"
-    #   else
-    #     flash[:notice] = "Username/password is invalid"
-    #     redirect "/"
-    #   end
-    # else
-    #   erb :signed_out, locals: {user: user}
-    # end
-
   end
-
 
 
   def validate_authentication_params
@@ -160,7 +140,6 @@ class App < Sinatra::Application
     existing_users = User.where(username: username)
     existing_users.length == 0
   end
-
 
 
   def current_user
